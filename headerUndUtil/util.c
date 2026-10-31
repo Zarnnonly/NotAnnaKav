@@ -1,0 +1,147 @@
+#include "sha.h"
+#include <ctype.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <linux/limits.h>
+#include <time.h>
+#include <stdlib.h>
+
+//once the hashmap done, the Linear Comparison would become obsolete
+/*2026-10-17 It's done. Linear Comparison Obsolete by this date. 
+//So i will commented it
+short LinearComparison(u32t * fileHashed){
+      //since when i write a function name that's self explanatory?. MEH 
+
+      FILE *binREAD= fopen("/home/draco/vode/AV/db/kl256.bin", "rb");
+      fseek(binREAD, 0, SEEK_END); //move cursor to the end 
+      long len = ftell(binREAD); //count the len of a file binary contect
+      rewind(binREAD); //what the fuck?
+
+      u32t * buffer = malloc(len); //where i will write the buffer
+      fread(buffer,1,len,binREAD); //read from f, 1-len, put it to buffer
+
+
+      for (int i = 0; i < 8; i++) {
+            if (fileHashed[i] != buffer[i]) {
+                  free(buffer);
+                  fclose(binREAD);
+                  return 0;
+            }
+      }
+
+      free(buffer);
+      fclose(binREAD);
+      return 1;
+
+}
+*/
+
+int dfsWalker(char *path){
+      //time_t checkpoint = readCheckpoint();
+      DIR *dir;
+      struct dirent *entry;
+      dir = opendir(path);
+
+      if (dir == NULL){
+            printf("can't open");
+            chdir("../");
+            return -1 ;
+      }
+
+      chdir(path);
+      while(entry = readdir(dir)){
+            if (entry->d_type == DT_DIR){
+                  if ((strcmp(entry->d_name, ".") == 0) 
+                        || (strcmp(entry->d_name, "..") == 0)){
+                        continue;
+                  }
+                  printf("folder name : %s\n", entry->d_name);
+                  dfsWalker(entry->d_name);
+            }
+
+            else if(entry->d_type == DT_REG){
+
+                  struct stat file; 
+                  int Fp = open(entry->d_name, O_RDONLY);
+                  fstat(Fp, &file);
+                  printf("file name : %s\n", entry->d_name);
+                  //printf("last scan was %ld\n, and last file modified was %ld\n", checkpoint, file.st_mtim.tv_sec);
+                  if (((file.st_mode & S_IEXEC) 
+                        || (file.st_mode & S_IXGRP)
+                        || ( file.st_mode & S_IXOTH)) /*& (file.st_mtim.tv_sec > checkpoint)*/){
+                        printf("file name : %s\n", entry->d_name);
+                        u32t * H = HashAfile(entry->d_name);
+                        if (H != NULL){ //???THE LINE THE LINE 
+                              hashed * check = get(H);
+                              if (check != NULL){
+                                    printf("There is something here\n");
+                                    printf("file %s is a %s", entry->d_name, check->name);
+                              }
+                        }
+
+                        free(H);
+                  }
+                  else{ 
+                        printf("%s is not executable\n", entry->d_name);
+                  }
+                  close(Fp);
+            }
+      }
+
+      chdir("../");
+
+      if (closedir(dir) == -1){
+            printf("Can't close");
+            return -1 ;
+      }
+}
+
+
+void startWalking(){
+      chdir("/home/draco/");
+      dfsWalker("./");
+}
+
+void WAFPrev(){
+      struct stat cred;
+      stat("/etc/passwd", &cred);
+      printf("Checking /etc/passwd permission\n");
+      if (cred.st_mode & (S_IWOTH | S_IWGRP)){
+            char x;
+            printf("ALERT: regular user able to write /etc/passwd, would you like change this? (Y/n)");
+            scanf(" %c", &x);
+            if (toupper(x) == 89){
+                  chmod("/etc/passwd", S_IWUSR| S_IRUSR | S_IROTH | S_IRGRP);
+                  printf("/etc/passwd permission changed\n");
+            }
+            else{
+                  printf("Do it yourself then scum\n");
+            }
+      }
+      else{
+            printf("/etc/passwd permission complying the rule\n");
+      }
+
+      stat("/etc/shadow", &cred);
+      printf("Checking /etc/shadow permission\n");
+
+      if (cred.st_mode & (S_IWOTH | S_IROTH | S_IRGRP | S_IWGRP)){
+            char x;
+            printf("ALERT: The /etc/shadow is permission is weak, would you like to change it? (Y/n)");
+            scanf(" %c", &x);
+            if (toupper(x)== 89){
+                  chmod("/etc/shadow", S_IWUSR| S_IRUSR);
+                  printf("/etc/shadow permission changed\n");
+            }
+
+            else{
+                  printf("Do it yourself then scum\n");
+            }
+      }
+      else{
+            printf("/etc/shadow permission complying the rule\n");
+      }
+}
