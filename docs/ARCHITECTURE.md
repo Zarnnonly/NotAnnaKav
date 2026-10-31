@@ -1,6 +1,6 @@
 # Desktop architecture
 
-AnnaKav Desktop separates presentation from local file inspection. The existing C CLI remains an independent implementation.
+NotAnnaKav Desktop separates presentation from local file inspection. The existing C CLI remains an independent implementation.
 
 ## Execution flow
 

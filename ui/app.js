@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const invoke = (name, args) => {
-  if (!window.__TAURI__) throw new Error('Open AnnaKav through the Tauri desktop application.');
+  if (!window.__TAURI__) throw new Error('Open NotAnnaKav through the Tauri desktop application.');
   return window.__TAURI__.core.invoke(name, args);
 };
 let report;
@@ -58,6 +58,6 @@ $('scan').addEventListener('click', async () => {
 $('export').addEventListener('click', () => {
   if (!report) return;
   const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
-  const link = document.createElement('a'); link.href = url; link.download = 'annakav-report.json'; link.click();
+  const link = document.createElement('a'); link.href = url; link.download = 'notannakav-report.json'; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });

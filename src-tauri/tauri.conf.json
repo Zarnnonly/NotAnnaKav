@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AnnaKav",
+  "productName": "NotAnnaKav",
   "version": "0.1.0",
-  "identifier": "io.annakav.desktop",
+  "identifier": "io.notannakav.desktop",
   "build": { "frontendDist": "../ui" },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "label": "main", "title": "AnnaKav", "width": 1100, "height": 760, "minWidth": 760, "minHeight": 600 }],
+    "windows": [{ "label": "main", "title": "NotAnnaKav", "width": 1100, "height": 760, "minWidth": 760, "minHeight": 600 }],
     "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src ipc: http://ipc.localhost" }
   },
   "bundle": {

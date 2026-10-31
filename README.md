@@ -1,10 +1,10 @@
-# AnnaKav
+# NotAnnaKav
 
 ### A window appeared. Unfortunately, the work is still there.
 
 I thought giving this thing a GUI would make it feel finished. A window, a few buttons, some numbers that go up. The usual ritual of convincing yourself that software is becoming software.
 
-Anyway. AnnaKav now has a Tauri desktop interface.
+Anyway. NotAnnaKav now has a Tauri desktop interface.
 
 What does it do? Walk through a folder, hash the files, compare those hashes against a local database, and tell you when something matches. Written like that, it sounds suspiciously simple. Then you have to deal with paths, unreadable files, binary records, and the small detail that the original program assumes everybody lives inside my Linux home directory.
 
@@ -12,7 +12,7 @@ They don't. Apparently.
 
 ## What is actually here
 
-AnnaKav is an experimental, on-demand SHA-256 signature scanner. The original implementation is in C. The desktop app uses Tauri 2 with a Rust scanner and a plain HTML/CSS/JavaScript interface.
+NotAnnaKav is an experimental, on-demand SHA-256 signature scanner. The original implementation is in C. The desktop app uses Tauri 2 with a Rust scanner and a plain HTML/CSS/JavaScript interface.
 
 You select a target folder and a signature database. The scanner reads regular files recursively, computes their SHA-256 digest, and looks for an exact match. Findings include the file path, signature record name, and digest. You can export the report as JSON.
 

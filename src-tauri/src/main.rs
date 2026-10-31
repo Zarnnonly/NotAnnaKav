@@ -25,5 +25,5 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![choose_folder, scan_folder])
         .run(tauri::generate_context!())
-        .expect("Failed to start AnnaKav");
+        .expect("Failed to start NotAnnaKav");
 }
