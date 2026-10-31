@@ -7,6 +7,8 @@ let report;
 let activeScanId = null;
 let nextScanId = 0;
 let stopping = false;
+let historyRequest = 0;
+let openRequest = 0;
 const bytes = (value) => `${Number(value ?? 0).toLocaleString()} bytes`;
 const duration = (ms) => `${(Number(ms ?? 0) / 1000).toFixed(1)}s`;
 const renderFinding = (finding) => {
@@ -35,6 +37,106 @@ const renderFinding = (finding) => {
   $('findings').append(card);
 };
 
+const showReport = (result, historical = false) => {
+  report = result;
+  $('scanned').textContent = result.scanned.toLocaleString();
+  $('matches').textContent = result.findings.length.toLocaleString();
+  $('signatures').textContent = result.signatures.toLocaleString();
+  $('skipped').textContent = result.skipped.toLocaleString();
+  $('status').textContent = result.stopped
+    ? 'Inspection stopped. These results are partial; remaining files have not been checked.'
+    : result.findings.length
+    ? 'Inspection complete. Signature matches require investigation.'
+    : 'Inspection complete. No known signatures matched the files successfully hashed.';
+  if (result.history_error) $('status').textContent += ` ${result.history_error}. You can still export this report.`;
+  const time = result.completed_at_ms ? new Date(result.completed_at_ms).toLocaleString() : result.completedAt;
+  $('report-context').hidden = false;
+  $('report-context').textContent = `${historical ? 'Saved inspection' : 'Latest inspection'} | ${time ?? ''} | ${result.target} | Database: ${result.database}`;
+  $('scan-progress').hidden = false;
+  $('activity').hidden = true;
+  $('current-file').textContent = '';
+  $('progress-summary').textContent = `${result.stopped ? 'Stopped' : 'Completed'} | ${result.scanned.toLocaleString()} files hashed | ${duration(result.elapsed_ms)} elapsed`;
+  $('findings').replaceChildren();
+  if (!result.findings.length) {
+    const p = document.createElement('p');
+    p.className = 'empty'; p.textContent = result.stopped
+      ? 'No matches in the files checked so far. Inspection was stopped before completion.'
+      : 'No signature matches found. Review any warnings for incomplete coverage.';
+    $('findings').append(p);
+  }
+  for (const finding of result.findings) renderFinding(finding);
+  $('warning-section').hidden = !result.warnings.length;
+  $('warnings').textContent = result.warnings.join('\n');
+  $('export').disabled = false;
+};
+
+const refreshHistory = async () => {
+  const request = ++historyRequest;
+  try {
+    const history = await invoke('list_history');
+    if (request !== historyRequest) return;
+    $('history-list').replaceChildren();
+    $('history-status').textContent = history.entries.length
+      ? 'Most recent saved inspections. Open a report to view its findings or export it.'
+      : 'No saved inspections yet. Completed and stopped scans are saved automatically.';
+    if (history.warnings.length) $('history-status').textContent += ` ${history.warnings.join(' ')}`;
+    for (const entry of history.entries) {
+      const row = document.createElement('div'); row.className = 'history-entry';
+      const text = document.createElement('div');
+      const title = document.createElement('p'); title.textContent = entry.target;
+      const summary = document.createElement('p');
+      summary.textContent = `${new Date(entry.completed_at_ms).toLocaleString()} | ${entry.stopped ? 'Stopped / partial' : 'Completed'} | ${entry.scanned} files | ${entry.matches} matches`;
+      text.append(title, summary);
+      const button = document.createElement('button'); button.className = 'secondary'; button.textContent = 'Open report';
+      button.addEventListener('click', async () => {
+        if (activeScanId) { $('history-status').textContent = 'Finish or stop the active inspection before opening a saved report.'; return; }
+        const request = ++openRequest;
+        const epoch = nextScanId;
+        button.disabled = true;
+        try {
+          const saved = await invoke('read_history', { id: entry.id });
+          if (activeScanId || epoch !== nextScanId || request !== openRequest) return;
+          showReport(saved, true);
+        } catch (error) { $('history-status').textContent = `Could not open report: ${error}`; }
+        finally { button.disabled = false; }
+      });
+      row.append(text, button); $('history-list').append(row);
+    }
+  } catch (error) {
+    if (request === historyRequest) $('history-status').textContent = `Could not load history: ${error}`;
+  }
+};
+$('refresh-history').addEventListener('click', refreshHistory);
+refreshHistory();
+
+$('choose-file').addEventListener('click', async () => {
+  try {
+    const path = await invoke('choose_file');
+    if (path && !activeScanId) $('target').value = path;
+  } catch (error) { $('status').textContent = String(error); }
+});
+
+const setupDrop = async () => {
+  try {
+    await window.__TAURI__.webview.getCurrentWebview().onDragDropEvent(({ payload }) => {
+      $('drop-zone').classList.remove('drag-over');
+      if (activeScanId) {
+        if (payload.type === 'drop') $('drop-zone').textContent = 'Finish or stop this scan before selecting another target.';
+        return;
+      }
+      if (payload.type === 'enter' || payload.type === 'over') $('drop-zone').classList.add('drag-over');
+      if (payload.type !== 'drop') return;
+      if (payload.paths.length !== 1) {
+        $('drop-zone').textContent = 'Drop one file or folder at a time. The current target has not changed.';
+        return;
+      }
+      $('target').value = payload.paths[0];
+      $('drop-zone').textContent = 'Target selected. Click Start inspection to scan it.';
+    });
+  } catch (error) { $('drop-zone').textContent = `Drag-and-drop unavailable. Use Choose file or Browse folder. ${error}`; }
+};
+setupDrop();
+
 $('stop').addEventListener('click', async () => {
   const id = activeScanId;
   if (!id || stopping) return;
@@ -62,7 +164,7 @@ for (const name of ['target', 'database']) {
   $(`choose-${name}`).addEventListener('click', async () => {
     try {
       const path = await invoke('choose_folder');
-      if (path) $(name).value = path;
+      if (path && !activeScanId) $(name).value = path;
     } catch (error) { $('status').textContent = String(error); }
   });
 }
@@ -70,9 +172,10 @@ $('scan').addEventListener('click', async () => {
   if (activeScanId) return;
   const target = $('target').value.trim();
   const database = $('custom-database').checked ? $('database').value.trim() : null;
-  if (!target) { $('status').textContent = 'Select a folder to scan.'; return; }
+  if (!target) { $('status').textContent = 'Select a file or folder to scan.'; return; }
   if (database === '') { $('status').textContent = 'Select your custom database folder or turn off the custom database option.'; return; }
   report = undefined;
+  $('report-context').hidden = true;
   const scanId = `${Date.now()}-${++nextScanId}`;
   activeScanId = scanId;
   stopping = false;
@@ -86,7 +189,7 @@ $('scan').addEventListener('click', async () => {
   for (const id of ['scanned', 'matches', 'signatures', 'skipped']) $(id).textContent = '—';
   $('findings').replaceChildren();
   $('warning-section').hidden = true;
-  for (const id of ['scan', 'target', 'database', 'choose-target', 'choose-database', 'custom-database']) $(id).disabled = true;
+  for (const id of ['scan', 'target', 'database', 'choose-target', 'choose-file', 'choose-database', 'custom-database']) $(id).disabled = true;
   $('status').textContent = 'Inspection in progress. Large folders may take several minutes…';
   $('status').classList.add('running');
   try {
@@ -106,29 +209,8 @@ $('scan').addEventListener('click', async () => {
     };
     const result = await invoke('scan_folder', { target, database, scanId, onProgress });
     acceptingProgress = false;
-    report = { target, database: database ?? 'bundled', completedAt: new Date().toISOString(), ...result };
-    $('scanned').textContent = result.scanned.toLocaleString();
-    $('matches').textContent = result.findings.length.toLocaleString();
-    $('signatures').textContent = result.signatures.toLocaleString();
-    $('skipped').textContent = result.skipped.toLocaleString();
-    $('status').textContent = result.stopped
-      ? 'Inspection stopped. These results are partial; remaining files have not been checked.'
-      : result.findings.length
-      ? 'Inspection complete. Signature matches require investigation.'
-      : 'Inspection complete. No known signatures matched the files successfully hashed.';
-    $('progress-summary').textContent = `${result.stopped ? 'Stopped' : 'Completed'} | ${result.scanned.toLocaleString()} files hashed | ${duration(result.elapsed_ms)} elapsed`;
-    $('findings').replaceChildren();
-    if (!result.findings.length) {
-      const p = document.createElement('p');
-      p.className = 'empty'; p.textContent = result.stopped
-        ? 'No matches in the files checked so far. Inspection was stopped before completion.'
-        : 'No signature matches found. Review any warnings for incomplete coverage.';
-      $('findings').append(p);
-    }
-    for (const finding of result.findings) renderFinding(finding);
-    $('warning-section').hidden = !result.warnings.length;
-    $('warnings').textContent = result.warnings.join('\n');
-    $('export').disabled = false;
+    showReport({ target, database: database ?? 'bundled', completedAt: new Date().toISOString(), ...result });
+    await refreshHistory();
   } catch (error) {
     $('status').textContent = `Inspection failed: ${error}`;
     $('progress-summary').textContent = 'Inspection failed. Any live findings shown are incomplete.';
@@ -139,7 +221,7 @@ $('scan').addEventListener('click', async () => {
     $('stop').disabled = true;
     $('activity').hidden = true;
     $('status').classList.remove('running');
-    for (const id of ['scan', 'target', 'custom-database', 'choose-target']) $(id).disabled = false;
+    for (const id of ['scan', 'target', 'custom-database', 'choose-target', 'choose-file']) $(id).disabled = false;
     syncDatabaseSelection();
   }
 });

@@ -3,28 +3,33 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 
-function app(backend = async () => ({ scanned: 1, signatures: 10, skipped: 0, findings: [], warnings: [] })) {
+function app(backend = async () => ({ scanned: 1, signatures: 10, skipped: 0, findings: [], warnings: [] }), history = []) {
   const elements = new Map();
   const element = () => ({
     value: '', checked: false, disabled: false, hidden: false, textContent: '',
     events: {}, children: [], classList: { add() {}, remove() {} },
     addEventListener(name, callback) { this.events[name] = callback; },
-    replaceChildren() { this.children = []; }, append(...children) { this.children.push(...children); },
+    click() {}, replaceChildren() { this.children = []; }, append(...children) { this.children.push(...children); },
   });
   const get = (id) => {
     if (!elements.has(id)) elements.set(id, element());
     return elements.get(id);
   };
   const calls = [];
+  let dropHandler;
+  let exported;
   const context = vm.createContext({
+    Blob, URL: { createObjectURL(blob) { exported = blob; return 'blob:test'; }, revokeObjectURL() {} },
+    setTimeout(callback) { callback(); },
     document: { getElementById: get, createElement: element },
     window: { __TAURI__: { core: { Channel: class {}, invoke: async (name, args) => {
+      if (name === 'list_history') return { entries: history, warnings: [] };
       calls.push({ name, args });
       return backend(name, args);
-    } } } },
+    } }, webview: { getCurrentWebview: () => ({ onDragDropEvent: async (handler) => { dropHandler = handler; } }) } } },
   });
   vm.runInContext(readFileSync(require.resolve('../ui/app.js'), 'utf8'), context);
-  return { get, calls };
+  return { get, calls, drop: (payload) => dropHandler({ payload }), exported: () => exported };
 }
 
 test('a target alone starts a bundled scan and keeps custom controls disabled afterward', async () => {
@@ -40,6 +45,47 @@ test('a target alone starts a bundled scan and keeps custom controls disabled af
   assert.equal(get('export').disabled, false);
   assert.equal(get('database').disabled, true);
   assert.equal(get('choose-database').disabled, true);
+});
+
+test('file picker and native drops select one target without starting a scan', async () => {
+  const { get, calls, drop } = app(async () => 'C:/samples/one.exe');
+  await get('choose-file').events.click();
+  assert.equal(calls[0].name, 'choose_file');
+  assert.equal(get('target').value, 'C:/samples/one.exe');
+  drop({ type: 'drop', paths: ['C:/folder'] });
+  assert.equal(get('target').value, 'C:/folder');
+  drop({ type: 'drop', paths: ['C:/one', 'C:/two'] });
+  assert.equal(get('target').value, 'C:/folder');
+  assert.match(get('drop-zone').textContent, /one file or folder/);
+  assert.equal(calls.length, 1);
+});
+
+test('saved partial report can be reopened and exported after app startup', async () => {
+  const saved = { id: '123-1', completed_at_ms: 1700000000000, target: 'C:/old/file.exe', database: 'bundled',
+    scanned: 1, signatures: 10, skipped: 0, findings: [], warnings: ['Skipped something'], stopped: true, elapsed_ms: 25 };
+  const { get, calls, exported } = app(async () => saved, [{ ...saved, matches: 0 }]);
+  await get('refresh-history').events.click();
+  const button = get('history-list').children[0].children[1];
+  await button.events.click();
+  assert.equal(calls[0].name, 'read_history');
+  assert.equal(calls[0].args.id, saved.id);
+  assert.match(get('report-context').textContent, /Saved inspection.*old\/file.exe/);
+  assert.match(get('status').textContent, /partial/);
+  assert.equal(get('warnings').textContent, 'Skipped something');
+  assert.equal(get('export').disabled, false);
+  get('export').events.click();
+  const json = JSON.parse(await exported().text());
+  assert.equal(json.id, saved.id);
+  assert.equal(json.stopped, true);
+});
+
+test('history write failure keeps scan results exportable and shows the error', async () => {
+  const { get } = app(async () => ({ scanned: 1, signatures: 10, skipped: 0, findings: [], warnings: [],
+    history_error: 'Could not save scan history: disk full' }));
+  get('target').value = 'C:/sample.txt';
+  await get('scan').events.click();
+  assert.match(get('status').textContent, /disk full/);
+  assert.equal(get('export').disabled, false);
 });
 
 test('progress is live, Stop targets this scan, partial findings remain exportable, and stale updates are ignored', async () => {

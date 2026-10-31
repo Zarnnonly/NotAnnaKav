@@ -1,12 +1,48 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod history;
 mod scanner;
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-use tauri::{ipc::Channel, State};
+use tauri::{ipc::Channel, Manager, State};
+
+fn history_directory(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_local_data_dir()
+        .map(|p| p.join("scan-history"))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_history(app: tauri::AppHandle) -> Result<history::Listing, String> {
+    let root = history_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || history::list(&root))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn read_history(app: tauri::AppHandle, id: String) -> Result<history::Record, String> {
+    let root = history_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || history::read(&root, &id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn choose_file() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .pick_file()
+            .map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
+    .ok()
+    .flatten()
+}
 
 #[derive(Default, Clone)]
 struct ScanState(Arc<Mutex<Option<(String, Arc<AtomicBool>)>>>);
@@ -67,17 +103,24 @@ async fn scan_folder(
     scan_id: String,
     on_progress: Channel<scanner::Progress>,
     state: State<'_, ScanState>,
-) -> Result<scanner::Report, String> {
+    app: tauri::AppHandle,
+) -> Result<history::Record, String> {
     let cancel = state.begin(scan_id)?;
     let state = state.inner().clone();
+    let history_root = history_directory(&app);
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = ScanGuard(state);
-        scanner::scan(&target, database.as_deref(), &cancel, |progress| {
+        let report = scanner::scan(&target, database.as_deref(), &cancel, |progress| {
             // A closed window should not leave an unattended inspection running.
             if on_progress.send(progress).is_err() {
                 cancel.store(true, Ordering::Relaxed);
             }
-        })
+        })?;
+        let mut record = history::Record::new(target, database, report);
+        if let Err(error) = history_root.and_then(|root| history::save(&root, &record)) {
+            record.history_error = Some(format!("Could not save scan history: {error}"));
+        }
+        Ok(record)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -88,6 +131,9 @@ fn main() {
         .manage(ScanState::default())
         .invoke_handler(tauri::generate_handler![
             choose_folder,
+            choose_file,
+            list_history,
+            read_history,
             scan_folder,
             stop_scan
         ])

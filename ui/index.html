@@ -7,16 +7,19 @@
 <header><span>WORKSPACE / THREAT SCANNER</span><span class="badge">SHA-256 ENGINE</span></header>
 <section class="intro"><div class="eyebrow">VISIBILITY STARTS HERE</div><h1>Inspect. Identify. Investigate.</h1><p>Scan local files against your signature intelligence.<br>Clear evidence for your next security decision.</p></section>
 <section class="panel"><div class="panel-heading"><h2>Configure inspection</h2><span>01 / TARGET SELECTION</span></div>
-<label for="target">Scan target</label><div class="field"><input id="target" placeholder="Select or enter a folder path" spellcheck="false"><button id="choose-target" class="secondary">Browse folder</button></div>
+<label for="target">Scan target</label><div class="field target-field"><input id="target" placeholder="Select or enter a file or folder path" spellcheck="false"><button id="choose-file" class="secondary">Choose file</button><button id="choose-target" class="secondary">Browse folder</button></div>
+<div id="drop-zone" class="drop-zone">Drop one file or folder anywhere in this window, then start inspection.</div>
 <p class="database-note">Included signature database selected. Ready to scan.<br><small>Starter records included with the app; no automatic threat updates.</small></p>
 <details class="advanced"><summary>Advanced settings</summary>
 <label><input type="checkbox" id="custom-database"> Use my own signature database</label>
 <div id="custom-database-fields" hidden><label for="database">Custom database folder</label><div class="field"><input id="database" placeholder="Select a folder containing your signatures" spellcheck="false" disabled><button id="choose-database" class="secondary" disabled>Browse folder</button></div></div>
 <p class="database-note">A custom database replaces the included records for this scan.</p></details>
 <div class="scan-actions"><span>Read-only scan · All regular files · No symlink traversal</span><div class="scan-buttons"><button id="stop" class="secondary" disabled>Stop</button><button id="scan">Start inspection <span>↗</span></button></div></div></section>
-<div id="status" role="status" aria-live="polite">Ready to inspect. Select a folder to scan.</div>
+<div id="status" role="status" aria-live="polite">Ready to inspect. Select a file or folder to scan.</div>
+<p id="report-context" class="report-context" hidden></p>
 <section id="scan-progress" class="scan-progress" hidden aria-label="Scan progress"><progress id="activity" aria-label="Inspection in progress"></progress><p id="progress-summary">Preparing inspection...</p><p id="current-file"></p><small id="progress-note">Files are discovered during inspection; the total is not known in advance.</small></section>
 <section class="metrics" aria-label="Scan statistics"><div><span>FILES HASHED</span><strong id="scanned">—</strong></div><div><span>SIGNATURE MATCHES</span><strong id="matches">—</strong></div><div><span>ACTIVE SIGNATURES</span><strong id="signatures">—</strong></div><div><span>SKIPPED ENTRIES</span><strong id="skipped">—</strong></div></section>
 <section class="panel results"><div class="panel-heading"><h2>Inspection findings</h2><button id="export" class="secondary" disabled>Export JSON</button></div><div id="findings"><p class="empty">Your scan evidence will appear here.</p></div><details id="warning-section" hidden><summary>Scan warnings</summary><pre id="warnings"></pre></details></section>
+<section class="panel history"><div class="panel-heading"><h2>Scan history</h2><button id="refresh-history" class="secondary">Refresh</button></div><p id="history-status" role="status" aria-live="polite">Loading saved inspections...</p><div id="history-list"></div></section>
 <footer>NOTANNAKAV / ON-DEMAND SIGNATURE INSPECTION <span>No match does not guarantee a file is safe.</span></footer>
 </main></body></html>

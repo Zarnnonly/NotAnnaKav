@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -12,25 +12,25 @@ use walkdir::WalkDir;
 
 include!(concat!(env!("OUT_DIR"), "/bundled_signatures.rs"));
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Finding {
     path: String,
     signature: String,
     sha256: String,
     size_bytes: u64,
     signature_source: String,
-    detection_method: &'static str,
-    reason: &'static str,
+    detection_method: String,
+    reason: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Report {
-    scanned: u64,
+    pub scanned: u64,
     signatures: usize,
     skipped: u64,
-    findings: Vec<Finding>,
+    pub findings: Vec<Finding>,
     warnings: Vec<String>,
-    stopped: bool,
+    pub stopped: bool,
     elapsed_ms: u64,
 }
 
@@ -139,11 +139,11 @@ pub fn scan(
     };
     updates.send(&report, true);
     if target.trim().is_empty() {
-        return Err("Select a target folder.".into());
+        return Err("Select a file or folder to inspect.".into());
     }
     let target = fs::canonicalize(target).map_err(|e| format!("Target: {e}"))?;
-    if !target.is_dir() {
-        return Err("Target must be a directory.".into());
+    if !target.is_dir() && !target.is_file() {
+        return Err("Target must be a regular file or directory.".into());
     }
     let mut source = String::from("Included database");
     if let Some(database) = database {
@@ -241,8 +241,8 @@ pub fn scan(
                         sha256: hash,
                         size_bytes: size,
                         signature_source: source.clone(),
-                        detection_method: "Exact SHA-256 match",
-                        reason: "The file digest exactly matches a supplied signature. The signature label is not an independently verified malware verdict.",
+                        detection_method: "Exact SHA-256 match".into(),
+                        reason: "The file digest exactly matches a supplied signature. The signature label is not an independently verified malware verdict.".into(),
                     };
                     report.findings.push(finding.clone());
                     updates.progress.finding = Some(finding);
@@ -313,6 +313,14 @@ mod tests {
         assert_eq!(report.findings[0].size_bytes, 3);
         assert_eq!(report.findings[0].detection_method, "Exact SHA-256 match");
         assert!(report.findings[0].signature_source.contains("db"));
+        let single = scan(
+            target.join("sample.txt").to_str().unwrap(),
+            Some(db.to_str().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(single.scanned, 1);
+        assert_eq!(single.findings.len(), 1);
+        assert_eq!(single.findings[0].sha256, report.findings[0].sha256);
         let cancel = AtomicBool::new(false);
         let mut updates = vec![];
         let partial = super::scan(

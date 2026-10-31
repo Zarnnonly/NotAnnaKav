@@ -14,7 +14,7 @@ They don't. Apparently.
 
 NotAnnaKav is an experimental, on-demand SHA-256 signature scanner. The original implementation is in C. The desktop app uses Tauri 2 with a Rust scanner and a plain HTML/CSS/JavaScript interface.
 
-You select a target folder. The included signature database is used automatically. The scanner reads regular files recursively, computes their SHA-256 digest, and looks for an exact match. Findings include the file path, size, signature record, database source, digest, and an explanation of the match. You can export the report as JSON.
+You select a file or folder. The included signature database is used automatically. The scanner reads the selected file, or regular files recursively within a folder, computes their SHA-256 digest, and looks for an exact match. Findings include the file path, size, signature record, database source, digest, and an explanation of the match. You can export the report as JSON.
 
 No cloud account. No upload step. File contents are processed locally.
 
@@ -43,7 +43,7 @@ Build output goes under `src-tauri/target/release/`; installers, when generated,
 
 ## Actually scan something
 
-1. Browse to the folder you want to inspect.
+1. Use **Choose file** or **Browse folder**, or drop one file or folder anywhere in the application window. Dropping selects the target; it does not start a scan automatically. Multiple dropped items are rejected so nothing is silently omitted.
 2. Leave the included database selected. No database download or folder selection is required. To use your own records, open **Advanced settings**, enable **Use my own signature database**, and choose its folder.
 3. Click **Start inspection**.
 4. Review matches and warnings. Export the JSON report if you need the evidence outside the window.
@@ -53,6 +53,14 @@ The numbers update while the scan runs: files hashed, signature matches, loaded 
 Click **Stop** to request cancellation. The scanner checks between entries and between 64 KiB reads; a filesystem operation already waiting on the operating system must return first. Completed findings are retained, and the result is explicitly marked as partial. You can still export it; JSON reports include `stopped` and `elapsed_ms`. A partially hashed file is never compared as if its digest were complete.
 
 Matches appear during the scan. Open **View finding details** to inspect the path, size, SHA-256, signature record and database source, detection method, and reason. A match is reported only: the file is not deleted, changed, or quarantined.
+
+## It remembers now
+
+Completed and stopped scans are saved automatically. Scroll to **Scan history**, then click **Open report** to review a previous result and export its JSON. The saved report's target, date, database, and completion status appear above its findings. Opening history does not run another scan.
+
+History survives application restarts. Reports live under the operating system's local application data directory, in `io.notannakav.desktop/scan-history` (on Windows, typically `%LOCALAPPDATA%\io.notannakav.desktop\scan-history`). The interface shows the newest 100 records; older files remain on disk. Reports include local paths and signature evidence, not copies of scanned files. There is no automatic deletion policy yet.
+
+A stopped scan is saved as partial. A scan that fails before returning a report is not saved. If saving fails, the scan result stays visible and exportable, with an error explaining that history was not saved. Unreadable history files are reported without hiding valid records.
 
 A signature match means the file has the same SHA-256 digest as a record you supplied. How much that tells you depends on where the record came from. A filename in the database is a label, not a verdict handed down by some divine threat intelligence department.
 
@@ -122,7 +130,7 @@ They cover legacy record decoding, hexadecimal record parsing, embedded database
 
 ## Next, probably
 
-Better signature metadata. Scan history. A proper checkpoint strategy for the desktop scanner. More tests around filesystems that refuse to cooperate.
+Better signature metadata. History retention controls. A proper checkpoint strategy for the desktop scanner. More tests around filesystems that refuse to cooperate.
 
 These are plans, not features hiding behind a button I forgot to explain.
 

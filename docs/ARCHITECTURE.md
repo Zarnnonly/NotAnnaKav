@@ -4,10 +4,10 @@ NotAnnaKav Desktop separates presentation from local file inspection. The existi
 
 ## Execution flow
 
-1. The local HTML interface invokes `choose_folder` to open a native directory picker, or accepts a manually entered target path. The included database is selected by default.
+1. The local HTML interface invokes `choose_folder` or `choose_file` for native selection, accepts a manually entered path, or uses Tauri's native webview drag-and-drop events. A drop selects exactly one file or directory without automatically starting inspection. Active inspections reject target changes. The included database is selected by default.
 2. `scan_folder` receives the target and an optional custom database path through Tauri IPC. An omitted or null database uses the embedded records. An explicitly empty custom path is an error.
 3. The command runs the scanner on a blocking worker so filesystem work does not block the UI thread.
-4. The scanner canonicalizes the target and any custom database path, loads signatures into a hash map, traverses the target, and hashes regular files in 64 KiB chunks.
+4. The scanner canonicalizes the target and any custom database path, loads signatures into a hash map, walks either the single file or target directory, and hashes regular files in 64 KiB chunks.
 5. A Tauri channel streams progress and matches to the interface. The final report includes input paths, completion time, counts, findings, warnings, `stopped`, and `elapsed_ms` in JSON exports.
 
 The database is loaded once per scan. Lookup uses a hash map keyed by the normalized hexadecimal digest. Traversal does not follow symbolic links. Hashing is sequential; the working buffer does not grow with file size. Findings are retained in memory, so report size grows with the number of matches. Routine progress messages are throttled to at most one per 100 ms; phase transitions and matches are sent immediately. Progress includes counts, current path, file bytes read, file size, and elapsed milliseconds. There is no pre-count pass or overall percentage.
@@ -27,13 +27,19 @@ Alternatively, a signature file can contain one ASCII hexadecimal digest. Invali
 ## Security boundaries
 
 - Frontend assets are local. The content security policy restricts scripts and styles to the application origin and allows Tauri IPC connections.
-- Folder selection, scanning, and cancellation are exposed through three specific Rust commands. The app does not expose shell execution to the frontend.
+- Native file/folder selection, scanning, cancellation, and history listing/reading are exposed through specific Rust commands. The app does not expose shell execution to the frontend.
 - Inspection uses the operating system permissions of the current process. It does not request elevation or bypass access controls.
 - File paths, labels, and errors are rendered as text, avoiding HTML interpretation of filesystem-controlled values.
 - Scanning does not intentionally modify inspected files. It does not invoke the C permission repair routine.
 - JSON reports can contain sensitive local paths. The user controls where exported reports are shared.
 
-Custom Rust commands can access paths accepted by the scanner; the window capability is not a filesystem sandbox for those commands. Native dialogs improve selection usability, while the Rust backend validates the target directory and reads any explicitly supplied custom database directory.
+Custom Rust commands can access paths accepted by the scanner; the window capability is not a filesystem sandbox for those commands. Native dialogs improve selection usability, while the Rust backend validates that the target is a regular file or directory and reads any explicitly supplied custom database directory.
+
+## Persistent history
+
+After successful completion or cooperative cancellation, the backend saves the report under `app_local_data_dir()/scan-history`. Each record contains a backend-generated identifier, completion timestamp, requested target, database source, and the full report. Records are serialized to a new temporary file, flushed, then renamed to their final JSON filename. History writes run on the blocking worker. Save failures are returned alongside the report instead of discarding the inspection result.
+
+`list_history` returns summaries for the newest 100 records and warnings for unreadable files. `read_history` returns one complete record; identifiers are restricted to digits and hyphens, and the record ID must match the filename. No caller-supplied filesystem path is accepted by history commands. The frontend loads history on startup and refreshes it after scans. A saved report can be opened and exported while idle; late read responses cannot replace a newly started scan. History files remain until manually removed; this version has no retention or deletion UI. Failed scans that do not return a report are not recorded.
 
 ## Operational limits
 
