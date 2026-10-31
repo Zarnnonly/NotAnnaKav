@@ -121,4 +121,4 @@ Anyway. A window appeared. You can scan something now.
 
 ## License
 
-See [LICENSE](LICENSE) for the repository's license terms.
+Licensed under the [MIT License](LICENSE).
