@@ -7,7 +7,7 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "test:ui": "node --test tests/ui.test.cjs"
+    "test:ui": "node --test tests/ui.test.cjs tests/network.test.cjs"
   },
   "devDependencies": { "@tauri-apps/cli": "^2.0.0" }
 }

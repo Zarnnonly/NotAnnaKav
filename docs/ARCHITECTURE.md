@@ -45,6 +45,12 @@ After successful completion or cooperative cancellation, the backend saves the r
 
 `read_history` reads and validates one complete report through a buffered reader; identifiers are restricted to digits and hyphens, and the record ID must match the filename. No caller-supplied filesystem path is accepted by history commands. The frontend loads history on startup and refreshes it in the background after scans, without keeping scan controls disabled. A saved report can be opened and exported while idle; late read responses cannot replace a newly started scan. History files remain until manually removed; this version has no retention or deletion UI. Failed scans that do not return a report are not recorded.
 
+## Network Monitor (Windows)
+
+`network_snapshot` reads IPv4 and IPv6 owner-PID TCP tables through `GetExtendedTcpTable` on a blocking worker. Buffers are aligned and bounded, retry on table growth, and validate row bounds before decoding SDK structs. Per-snapshot process metadata is cached by PID. Executable paths are queried using limited process access, and every successful process handle is closed. System entries and inaccessible/exited processes remain visible with unavailable-path notes. If one address family fails, the snapshot includes the other and a warning; if both fail, the command returns an error. Other operating systems return an explicit unsupported error.
+
+The sidebar view polls about two seconds after each response. Requests do not overlap; leaving the view cancels pending timers and invalidates in-flight responses. Pause stops automatic polling while preserving manual refresh. Failure retains the previous snapshot with a stale-data message. Filters run locally; only 50 rows are rendered per page. No packet content, UDP table, network history, threat classification, or firewall action is implemented. The executable scan action reuses the existing file scanner and current database. Connections and process paths are snapshots, not atomic proof of ownership at scan time.
+
 ## Operational limits
 
 There is no checkpoint persistence, concurrent scan queue, real-time watcher, or file snapshot isolation. Stopped scans cannot resume from their previous position. Warning retention is capped at 200 during traversal; invalid database record warnings are retained separately in the same report. Skipped counts can include directory traversal errors and do not represent an exact number of unreadable files.

@@ -1,7 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod history;
+mod network;
 mod scanner;
+
+#[tauri::command]
+async fn network_snapshot() -> Result<network::Snapshot, String> {
+    tauri::async_runtime::spawn_blocking(network::snapshot)
+        .await
+        .map_err(|e| e.to_string())?
+}
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -134,6 +142,7 @@ fn main() {
             choose_file,
             list_history,
             read_history,
+            network_snapshot,
             scan_folder,
             stop_scan
         ])

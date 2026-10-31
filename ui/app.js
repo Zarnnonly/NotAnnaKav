@@ -7,6 +7,12 @@ let report;
 let activeScanId = null;
 let nextScanId = 0;
 let stopping = false;
+window.scanNetworkExecutable = (path) => {
+  if (activeScanId || !path) return false;
+  $('target').value = path;
+  $('scan').click();
+  return true;
+};
 let historyRequest = 0;
 let openRequest = 0;
 const FINDINGS_PER_PAGE = 50;

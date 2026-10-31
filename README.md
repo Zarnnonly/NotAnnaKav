@@ -58,6 +58,16 @@ Matches appear during the scan. Open **View finding details** to inspect the pat
 
 Findings are displayed 50 at a time; use **Previous** and **Next** to navigate. Details are loaded into the view when expanded. JSON export includes every finding, regardless of the page you are viewing.
 
+## And now it has network visibility
+
+Network Monitor is available in current source builds; the published v1.0.0 binaries predate this feature.
+
+Open **Network Monitor** in the sidebar on Windows to inspect TCP IPv4/IPv6 connections and listening ports. Entries include the owning PID, process name, local and remote endpoints, TCP state, and executable path where accessible. Listener bindings distinguish localhost, all interfaces, and a specific interface; a binding does not establish reachability through a firewall or router.
+
+Snapshots refresh about two seconds after the previous request completes, only while this view is open. Use **Pause**, **Refresh now**, process/IP/path filtering, and the connections/listeners selector. Results are paginated at 50 entries. The monitor reads Windows TCP tables without a packet capture driver; it does not capture traffic contents, record network history, count bandwidth, or block connections. Brief connections between snapshots can be missed. UDP is not included.
+
+Open **Process details** for the executable path. **Scan executable** switches to Threat scanner and starts a file inspection using the currently selected signature database. Protected or exited processes may have no accessible path; their scan button is disabled. Finish or stop an existing file inspection before starting another. Snapshot ownership is time-sensitive: a process can exit, a PID can be reused, and a file can change before inspection. A connection, port, or process name alone is not a malware verdict.
+
 ## It remembers now
 
 Completed and stopped scans are saved automatically. Scroll to **Scan history**, then click **Open report** to review a previous result and export its JSON. The saved report's target, date, database, and completion status appear above its findings. Opening history does not run another scan.
