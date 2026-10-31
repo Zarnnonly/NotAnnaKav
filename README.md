@@ -1,6 +1,6 @@
 # NotAnnaKav
 
-**Current release: [v1.0.0](https://github.com/Zarnnonly/NotAnnaKav/releases/tag/v1.0.0)** — Windows x64 installer and portable ZIP. See the [release notes](docs/releases/v1.0.0.md).
+**Current release: [v1.1.0](https://github.com/Zarnnonly/NotAnnaKav/releases/tag/v1.1.0)** — Windows x64 installer and portable ZIP. See the [release notes](docs/releases/v1.1.0.md).
 
 ### A window appeared. Unfortunately, the work is still there.
 
@@ -60,7 +60,7 @@ Findings are displayed 50 at a time; use **Previous** and **Next** to navigate. 
 
 ## And now it has network visibility
 
-Network Monitor is available in current source builds; the published v1.0.0 binaries predate this feature.
+Network Monitor is included in v1.1.0 and later Windows builds.
 
 Open **Network Monitor** in the sidebar on Windows to inspect TCP IPv4/IPv6 connections and listening ports. Entries include the owning PID, process name, local and remote endpoints, TCP state, and executable path where accessible. Listener bindings distinguish localhost, all interfaces, and a specific interface; a binding does not establish reachability through a firewall or router.
 
