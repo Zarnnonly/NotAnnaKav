@@ -4,6 +4,14 @@ const invoke = (name, args) => {
   return window.__TAURI__.core.invoke(name, args);
 };
 let report;
+const syncDatabaseSelection = () => {
+  const custom = $('custom-database').checked;
+  $('custom-database-fields').hidden = !custom;
+  $('database').disabled = !custom;
+  $('choose-database').disabled = !custom;
+};
+$('custom-database').addEventListener('change', syncDatabaseSelection);
+syncDatabaseSelection();
 for (const name of ['target', 'database']) {
   $(`choose-${name}`).addEventListener('click', async () => {
     try {
@@ -14,19 +22,20 @@ for (const name of ['target', 'database']) {
 }
 $('scan').addEventListener('click', async () => {
   const target = $('target').value.trim();
-  const database = $('database').value.trim();
-  if (!target || !database) { $('status').textContent = 'Select both a scan target and a signature database.'; return; }
+  const database = $('custom-database').checked ? $('database').value.trim() : null;
+  if (!target) { $('status').textContent = 'Select a folder to scan.'; return; }
+  if (database === '') { $('status').textContent = 'Select your custom database folder or turn off the custom database option.'; return; }
   report = undefined;
   $('export').disabled = true;
   for (const id of ['scanned', 'matches', 'signatures', 'skipped']) $(id).textContent = '—';
   $('findings').replaceChildren();
   $('warning-section').hidden = true;
-  for (const id of ['scan', 'target', 'database', 'choose-target', 'choose-database']) $(id).disabled = true;
+  for (const id of ['scan', 'target', 'database', 'choose-target', 'choose-database', 'custom-database']) $(id).disabled = true;
   $('status').textContent = 'Inspection in progress. Large folders may take several minutes…';
   $('status').classList.add('running');
   try {
     const result = await invoke('scan_folder', { target, database });
-    report = { target, database, completedAt: new Date().toISOString(), ...result };
+    report = { target, database: database ?? 'bundled', completedAt: new Date().toISOString(), ...result };
     $('scanned').textContent = result.scanned.toLocaleString();
     $('matches').textContent = result.findings.length.toLocaleString();
     $('signatures').textContent = result.signatures.toLocaleString();
@@ -52,7 +61,8 @@ $('scan').addEventListener('click', async () => {
   } catch (error) { $('status').textContent = `Inspection failed: ${error}`; }
   finally {
     $('status').classList.remove('running');
-    for (const id of ['scan', 'target', 'database', 'choose-target', 'choose-database']) $(id).disabled = false;
+    for (const id of ['scan', 'target', 'custom-database', 'choose-target']) $(id).disabled = false;
+    syncDatabaseSelection();
   }
 });
 $('export').addEventListener('click', () => {

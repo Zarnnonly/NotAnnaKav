@@ -14,7 +14,7 @@ They don't. Apparently.
 
 NotAnnaKav is an experimental, on-demand SHA-256 signature scanner. The original implementation is in C. The desktop app uses Tauri 2 with a Rust scanner and a plain HTML/CSS/JavaScript interface.
 
-You select a target folder and a signature database. The scanner reads regular files recursively, computes their SHA-256 digest, and looks for an exact match. Findings include the file path, signature record name, and digest. You can export the report as JSON.
+You select a target folder. The included signature database is used automatically. The scanner reads regular files recursively, computes their SHA-256 digest, and looks for an exact match. Findings include the file path, signature record name, and digest. You can export the report as JSON.
 
 No cloud account. No upload step. File contents are processed locally.
 
@@ -44,7 +44,7 @@ Build output goes under `src-tauri/target/release/`; installers, when generated,
 ## Actually scan something
 
 1. Browse to the folder you want to inspect.
-2. Select a signature database folder. The repository's `db/` folder contains legacy records you can load, but it is not a maintained threat intelligence feed.
+2. Leave the included database selected. No database download or folder selection is required. To use your own records, open **Advanced settings**, enable **Use my own signature database**, and choose its folder.
 3. Click **Start inspection**.
 4. Review matches and warnings. Export the JSON report if you need the evidence outside the window.
 
@@ -53,6 +53,10 @@ The numbers appear when the scan finishes. There is no live file counter or canc
 A signature match means the file has the same SHA-256 digest as a record you supplied. How much that tells you depends on where the record came from. A filename in the database is a label, not a verdict handed down by some divine threat intelligence department.
 
 ## The database, because bytes have opinions
+
+The repository's `db/` records are embedded in the desktop executable during the build. They work in development and installed builds, even when the repository is not present. Updating `db/` requires rebuilding the app. These are starter legacy records, not a maintained threat intelligence feed, and there are no automatic updates.
+
+A custom database replaces the included records for that scan. Invalid or missing custom folders produce an error instead of silently switching databases. Exported reports identify the database as `bundled` or record the selected custom path.
 
 Each file in the database directory contains one signature. The desktop scanner accepts:
 
@@ -67,7 +71,7 @@ For a harmless end-to-end check, create a file containing exactly `abc` with no 
 ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
 ```
 
-Scan the folder containing `abc` using that database. A match verifies the workflow. It does not make `abc` malware. Please let those three letters live.
+In **Advanced settings**, select that separate folder as your custom database, then scan the folder containing `abc`. A match verifies the workflow. It does not make `abc` malware. Please let those three letters live.
 
 ## The C code did not disappear
 
@@ -107,9 +111,10 @@ Run the scanner tests with:
 
 ```sh
 npm test
+npm run test:ui
 ```
 
-They cover legacy record decoding, hexadecimal record parsing, and a real folder scan against a known SHA-256 test vector.
+They cover legacy record decoding, hexadecimal record parsing, embedded database loading, and a real folder scan against a known SHA-256 test vector. UI logic tests check the default scan, custom database selection, and failure handling through a simulated Tauri bridge.
 
 ## Next, probably
 

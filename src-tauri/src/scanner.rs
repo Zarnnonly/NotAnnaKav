@@ -8,6 +8,8 @@ use std::{
 };
 use walkdir::WalkDir;
 
+include!(concat!(env!("OUT_DIR"), "/bundled_signatures.rs"));
+
 #[derive(Serialize)]
 pub struct Finding {
     path: String,
@@ -53,14 +55,13 @@ fn hash_file(path: &Path) -> io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-pub fn scan(target: &str, database: &str) -> Result<Report, String> {
-    if target.trim().is_empty() || database.trim().is_empty() {
-        return Err("Select both a target folder and a signature database folder.".into());
+pub fn scan(target: &str, database: Option<&str>) -> Result<Report, String> {
+    if target.trim().is_empty() {
+        return Err("Select a target folder.".into());
     }
     let target = fs::canonicalize(target).map_err(|e| format!("Target: {e}"))?;
-    let database = fs::canonicalize(database).map_err(|e| format!("Database: {e}"))?;
-    if !target.is_dir() || !database.is_dir() {
-        return Err("Target and database must both be directories.".into());
+    if !target.is_dir() {
+        return Err("Target must be a directory.".into());
     }
     let mut signatures = HashMap::new();
     let mut report = Report {
@@ -70,28 +71,47 @@ pub fn scan(target: &str, database: &str) -> Result<Report, String> {
         findings: vec![],
         warnings: vec![],
     };
-    for entry in fs::read_dir(&database).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
-            continue;
+    if let Some(database) = database {
+        if database.trim().is_empty() {
+            return Err(
+                "Select a custom database folder or switch to the included database.".into(),
+            );
         }
-        // Read at most 4 KiB: a signature is 32 binary bytes or 64 hex characters.
-        let bytes = File::open(entry.path())
-            .and_then(|f| {
-                let mut bytes = vec![];
-                f.take(4096).read_to_end(&mut bytes)?;
-                Ok(bytes)
-            })
-            .map_err(|e| format!("Cannot read signature {}: {e}", entry.path().display()))?;
-        match decode_signature(&bytes) {
-            Some(hash) => {
-                signatures
-                    .entry(hash)
-                    .or_insert_with(|| entry.file_name().to_string_lossy().into_owned());
+        let database = fs::canonicalize(database).map_err(|e| format!("Database: {e}"))?;
+        for entry in fs::read_dir(&database).map_err(|e| format!("Database: {e}"))? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+                continue;
             }
-            None => report
-                .warnings
-                .push(format!("Invalid signature: {}", entry.path().display())),
+            // Read at most 4 KiB: a signature is 32 binary bytes or 64 hex characters.
+            let bytes = File::open(entry.path())
+                .and_then(|f| {
+                    let mut bytes = vec![];
+                    f.take(4096).read_to_end(&mut bytes)?;
+                    Ok(bytes)
+                })
+                .map_err(|e| format!("Cannot read signature {}: {e}", entry.path().display()))?;
+            match decode_signature(&bytes) {
+                Some(hash) => {
+                    signatures
+                        .entry(hash)
+                        .or_insert_with(|| entry.file_name().to_string_lossy().into_owned());
+                }
+                None => report
+                    .warnings
+                    .push(format!("Invalid signature: {}", entry.path().display())),
+            }
+        }
+    } else {
+        for (name, bytes) in BUNDLED_SIGNATURES {
+            match decode_signature(bytes) {
+                Some(hash) => {
+                    signatures.entry(hash).or_insert_with(|| (*name).to_owned());
+                }
+                None => report
+                    .warnings
+                    .push(format!("Invalid bundled signature: {name}")),
+            }
         }
     }
     if signatures.is_empty() {
@@ -163,10 +183,32 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         )
         .unwrap();
-        let report = scan(target.to_str().unwrap(), db.to_str().unwrap()).unwrap();
+        let report = scan(target.to_str().unwrap(), Some(db.to_str().unwrap())).unwrap();
         assert_eq!(report.scanned, 1);
         assert_eq!(report.findings.len(), 1);
         assert_eq!(report.skipped, 0);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bundled_database_works_without_a_database_path() {
+        assert!(!BUNDLED_SIGNATURES.is_empty());
+        assert!(BUNDLED_SIGNATURES
+            .iter()
+            .all(|(_, bytes)| decode_signature(bytes).is_some()));
+        let target =
+            std::env::temp_dir().join(format!("notannakav-bundled-{}", std::process::id()));
+        fs::create_dir_all(&target).unwrap();
+        let report = scan(target.to_str().unwrap(), None).unwrap();
+        assert!(report.signatures > 0);
+        assert_eq!(report.scanned, 0);
+        assert!(report.warnings.is_empty());
+        assert!(scan(target.to_str().unwrap(), Some("")).is_err());
+        assert!(scan(
+            target.to_str().unwrap(),
+            Some("nonexistent-database-folder")
+        )
+        .is_err());
+        fs::remove_dir_all(target).unwrap();
     }
 }

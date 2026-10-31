@@ -2,7 +2,7 @@
 
 Security tools can make very large promises. NotAnnaKav starts with a smaller question: does this file match a signature I already know?
 
-It is an experimental desktop scanner built around local SHA-256 inspection. Select a folder, supply a signature database, and review exact matches with paths and digests. Export the results as JSON when the evidence needs to leave the application.
+It is an experimental desktop scanner built around local SHA-256 inspection. Select a folder and scan against the included starter database, or supply your own database through Advanced settings. Review exact matches with paths and digests, then export the results as JSON when the evidence needs to leave the application. The included records are not an automatically updated threat feed.
 
 The project began as a Linux C implementation of directory traversal, executable filtering, hashing, and signature lookup. The Tauri desktop interface brings that core inspection workflow into a Rust backend with native folder selection and a visible results view.
 

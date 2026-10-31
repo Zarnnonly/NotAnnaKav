@@ -8,9 +8,13 @@
 <section class="intro"><div class="eyebrow">VISIBILITY STARTS HERE</div><h1>Inspect. Identify. Investigate.</h1><p>Scan local files against your signature intelligence.<br>Clear evidence for your next security decision.</p></section>
 <section class="panel"><div class="panel-heading"><h2>Configure inspection</h2><span>01 / TARGET SELECTION</span></div>
 <label for="target">Scan target</label><div class="field"><input id="target" placeholder="Select or enter a folder path" spellcheck="false"><button id="choose-target" class="secondary">Browse folder</button></div>
-<label for="database">Signature database <small>32-byte legacy records or SHA-256 hex files</small></label><div class="field"><input id="database" placeholder="Select the repository's db folder" spellcheck="false"><button id="choose-database" class="secondary">Browse folder</button></div>
+<p class="database-note">Included signature database selected. Ready to scan.<br><small>Starter records included with the app; no automatic threat updates.</small></p>
+<details class="advanced"><summary>Advanced settings</summary>
+<label><input type="checkbox" id="custom-database"> Use my own signature database</label>
+<div id="custom-database-fields" hidden><label for="database">Custom database folder</label><div class="field"><input id="database" placeholder="Select a folder containing your signatures" spellcheck="false" disabled><button id="choose-database" class="secondary" disabled>Browse folder</button></div></div>
+<p class="database-note">A custom database replaces the included records for this scan.</p></details>
 <div class="scan-actions"><span>Read-only scan · All regular files · No symlink traversal</span><button id="scan">Start inspection <span>↗</span></button></div></section>
-<div id="status" role="status" aria-live="polite">Ready to inspect. Select your target and signature database.</div>
+<div id="status" role="status" aria-live="polite">Ready to inspect. Select a folder to scan.</div>
 <section class="metrics" aria-label="Scan statistics"><div><span>FILES HASHED</span><strong id="scanned">—</strong></div><div><span>SIGNATURE MATCHES</span><strong id="matches">—</strong></div><div><span>ACTIVE SIGNATURES</span><strong id="signatures">—</strong></div><div><span>SKIPPED ENTRIES</span><strong id="skipped">—</strong></div></section>
 <section class="panel results"><div class="panel-heading"><h2>Inspection findings</h2><button id="export" class="secondary" disabled>Export JSON</button></div><div id="findings"><p class="empty">Your scan evidence will appear here.</p></div><details id="warning-section" hidden><summary>Scan warnings</summary><pre id="warnings"></pre></details></section>
 <footer>NOTANNAKAV / ON-DEMAND SIGNATURE INSPECTION <span>No match does not guarantee a file is safe.</span></footer>

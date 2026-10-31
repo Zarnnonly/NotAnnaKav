@@ -4,13 +4,15 @@ NotAnnaKav Desktop separates presentation from local file inspection. The existi
 
 ## Execution flow
 
-1. The local HTML interface invokes `choose_folder` to open a native directory picker, or accepts a manually entered path.
-2. `scan_folder` receives the target and database paths through Tauri IPC.
+1. The local HTML interface invokes `choose_folder` to open a native directory picker, or accepts a manually entered target path. The included database is selected by default.
+2. `scan_folder` receives the target and an optional custom database path through Tauri IPC. An omitted or null database uses the embedded records. An explicitly empty custom path is an error.
 3. The command runs the scanner on a blocking worker so filesystem work does not block the UI thread.
-4. The scanner canonicalizes paths, loads signatures into a hash map, traverses the target, and hashes regular files in 64 KiB chunks.
+4. The scanner canonicalizes the target and any custom database path, loads signatures into a hash map, traverses the target, and hashes regular files in 64 KiB chunks.
 5. The complete report returns to the interface. JSON export includes input paths, completion time, counts, findings, and warnings.
 
 The database is loaded once per scan. Lookup uses a hash map keyed by the normalized hexadecimal digest. Traversal does not follow symbolic links. Hashing is sequential; the working buffer does not grow with file size. Findings are retained in memory, so report size grows with the number of matches. The UI receives results only at completion.
+
+`build.rs` embeds regular files from the repository's `db/` directory into generated Rust data. Cargo tracks that directory and its records to rebuild on changes. The executable needs no database extraction, resource path lookup, working-directory convention, or network connection. A custom database replaces the embedded set; load errors never trigger an implicit fallback. Reports exported by the interface identify the source as `bundled` or the supplied custom path. The included legacy records have no automatic update or provenance verification service.
 
 ## Data compatibility
 
@@ -27,7 +29,7 @@ Alternatively, a signature file can contain one ASCII hexadecimal digest. Invali
 - Scanning does not intentionally modify inspected files. It does not invoke the C permission repair routine.
 - JSON reports can contain sensitive local paths. The user controls where exported reports are shared.
 
-Custom Rust commands can access paths accepted by the scanner; the window capability is not a filesystem sandbox for those commands. Native dialogs improve selection usability, while the Rust backend validates that both supplied paths resolve to directories.
+Custom Rust commands can access paths accepted by the scanner; the window capability is not a filesystem sandbox for those commands. Native dialogs improve selection usability, while the Rust backend validates the target directory and reads any explicitly supplied custom database directory.
 
 ## Operational limits
 

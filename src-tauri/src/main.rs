@@ -15,8 +15,8 @@ async fn choose_folder() -> Option<String> {
 }
 
 #[tauri::command]
-async fn scan_folder(target: String, database: String) -> Result<scanner::Report, String> {
-    tauri::async_runtime::spawn_blocking(move || scanner::scan(&target, &database))
+async fn scan_folder(target: String, database: Option<String>) -> Result<scanner::Report, String> {
+    tauri::async_runtime::spawn_blocking(move || scanner::scan(&target, database.as_deref()))
         .await
         .map_err(|e| e.to_string())?
 }
