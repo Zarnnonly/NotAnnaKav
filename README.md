@@ -14,7 +14,7 @@ They don't. Apparently.
 
 NotAnnaKav is an experimental, on-demand SHA-256 signature scanner. The original implementation is in C. The desktop app uses Tauri 2 with a Rust scanner and a plain HTML/CSS/JavaScript interface.
 
-You select a target folder. The included signature database is used automatically. The scanner reads regular files recursively, computes their SHA-256 digest, and looks for an exact match. Findings include the file path, signature record name, and digest. You can export the report as JSON.
+You select a target folder. The included signature database is used automatically. The scanner reads regular files recursively, computes their SHA-256 digest, and looks for an exact match. Findings include the file path, size, signature record, database source, digest, and an explanation of the match. You can export the report as JSON.
 
 No cloud account. No upload step. File contents are processed locally.
 
@@ -48,7 +48,11 @@ Build output goes under `src-tauri/target/release/`; installers, when generated,
 3. Click **Start inspection**.
 4. Review matches and warnings. Export the JSON report if you need the evidence outside the window.
 
-The numbers appear when the scan finishes. There is no live file counter or cancellation button yet. Large folders can take time, and unreadable entries are counted as skipped. Symlinks are not followed.
+The numbers update while the scan runs: files hashed, signature matches, loaded signatures, and skipped entries. The progress panel shows the current file, bytes read, and elapsed time. Files are discovered as the scanner walks, so there is no invented overall percentage. Large folders can take time, and unreadable entries are counted as skipped. Symlinks are not followed.
+
+Click **Stop** to request cancellation. The scanner checks between entries and between 64 KiB reads; a filesystem operation already waiting on the operating system must return first. Completed findings are retained, and the result is explicitly marked as partial. You can still export it; JSON reports include `stopped` and `elapsed_ms`. A partially hashed file is never compared as if its digest were complete.
+
+Matches appear during the scan. Open **View finding details** to inspect the path, size, SHA-256, signature record and database source, detection method, and reason. A match is reported only: the file is not deleted, changed, or quarantined.
 
 A signature match means the file has the same SHA-256 digest as a record you supplied. How much that tells you depends on where the record came from. A filename in the database is a label, not a verdict handed down by some divine threat intelligence department.
 
@@ -114,11 +118,11 @@ npm test
 npm run test:ui
 ```
 
-They cover legacy record decoding, hexadecimal record parsing, embedded database loading, and a real folder scan against a known SHA-256 test vector. UI logic tests check the default scan, custom database selection, and failure handling through a simulated Tauri bridge.
+They cover legacy record decoding, hexadecimal record parsing, embedded database loading, known SHA-256 matches, cancellation during hashing, partial results, and scan lifecycle protection. UI logic tests check database selection, live progress, finding details, Stop requests, and failure handling through a simulated Tauri bridge.
 
 ## Next, probably
 
-Live progress. Cancellation. Better signature metadata. A proper checkpoint strategy for the desktop scanner. More tests around filesystems that refuse to cooperate.
+Better signature metadata. Scan history. A proper checkpoint strategy for the desktop scanner. More tests around filesystems that refuse to cooperate.
 
 These are plans, not features hiding behind a button I forgot to explain.
 

@@ -6,3 +6,4 @@
 :root .advanced{color:#a3b5c1}
 :root .advanced summary{cursor:pointer}
 :root input[type=checkbox]{width:auto;margin:0 8px 0 0;accent-color:#adefc0}
+.scan-buttons{display:flex;gap:10px}.scan-progress{border:1px solid #29343d;border-radius:7px;padding:16px;margin-bottom:20px;background:#111a21}.scan-progress progress{width:100%;height:8px;accent-color:#adefc0}.scan-progress p{font-size:12px;margin:8px 0}.scan-progress small{font-size:10px;color:#82939f}#current-file{white-space:pre-wrap;overflow-wrap:anywhere;font-family:Consolas,monospace;font-size:11px}article details{padding-bottom:15px;color:#c7d4dd}article summary{cursor:pointer;font-size:12px}article dl{display:grid;grid-template-columns:130px 1fr;gap:10px;font-size:12px;line-height:1.7}article dt{color:#82939f}article dd{margin:0;overflow-wrap:anywhere}article dd:nth-of-type(5){font-family:Consolas,monospace;font-size:11px}

@@ -18,6 +18,6 @@ It is not presented as production endpoint protection. There are no detection ef
 
 ## Development direction
 
-The next engineering priorities are scan progress and cancellation, richer signature provenance, checkpoint design, and validation across release platforms. Each adds practical value without pretending the current prototype already contains it.
+The desktop workflow includes live progress, cancellation with partial results, and expandable evidence for each match. The next engineering priorities are richer signature provenance, scan history, checkpoint design, and validation across release platforms.
 
 NotAnnaKav makes a narrow claim that can be demonstrated: local files, explicit signatures, visible evidence. The next step is to make that workflow more useful, then measure what it can actually do.
