@@ -9,6 +9,11 @@ let nextScanId = 0;
 let stopping = false;
 let historyRequest = 0;
 let openRequest = 0;
+const FINDINGS_PER_PAGE = 50;
+let viewFindings = [];
+let findingPage = 0;
+let renderedPage = -1;
+let renderedCount = 0;
 const bytes = (value) => `${Number(value ?? 0).toLocaleString()} bytes`;
 const duration = (ms) => `${(Number(ms ?? 0) / 1000).toFixed(1)}s`;
 const renderFinding = (finding) => {
@@ -18,7 +23,11 @@ const renderFinding = (finding) => {
   const path = document.createElement('p'); path.textContent = finding.path;
   const details = document.createElement('details');
   const summary = document.createElement('summary'); summary.textContent = 'View finding details';
-  const fields = document.createElement('dl');
+  let populated = false;
+  details.addEventListener('toggle', () => {
+    if (!details.open || populated) return;
+    populated = true;
+    const fields = document.createElement('dl');
   for (const [label, value] of [
     ['Detection method', finding.detection_method],
     ['Why it matched', finding.reason],
@@ -33,9 +42,42 @@ const renderFinding = (finding) => {
     const description = document.createElement('dd'); description.textContent = value;
     fields.append(term, description);
   }
-  details.append(summary, fields); card.append(title, path, details);
+    details.append(fields);
+  });
+  details.append(summary); card.append(title, path, details);
   $('findings').append(card);
 };
+
+const renderFindingsPage = () => {
+  const pages = Math.max(1, Math.ceil(viewFindings.length / FINDINGS_PER_PAGE));
+  findingPage = Math.min(findingPage, pages - 1);
+  $('findings-page').textContent = `Page ${findingPage + 1} of ${pages} | ${viewFindings.length.toLocaleString()} matches`;
+  $('findings-prev').disabled = findingPage === 0;
+  $('findings-next').disabled = findingPage >= pages - 1;
+  if (!viewFindings.length) {
+    $('findings').replaceChildren();
+    const p = document.createElement('p'); p.className = 'empty';
+    p.textContent = activeScanId && !report ? 'No matches reported yet. Inspection is in progress.'
+      : report?.stopped ? 'No matches in the files checked so far. Inspection was stopped before completion.'
+      : 'No signature matches found. Review any warnings for incomplete coverage.';
+    $('findings').append(p);
+    renderedPage = -1;
+    renderedCount = 0;
+    return;
+  }
+  if (renderedPage !== findingPage) {
+    $('findings').replaceChildren();
+    renderedPage = findingPage;
+    renderedCount = 0;
+  }
+  const start = findingPage * FINDINGS_PER_PAGE;
+  const count = Math.min(FINDINGS_PER_PAGE, viewFindings.length - start);
+  for (; renderedCount < count; renderedCount++) renderFinding(viewFindings[start + renderedCount]);
+};
+$('findings-prev').addEventListener('click', () => { if (findingPage > 0) { findingPage--; renderFindingsPage(); } });
+$('findings-next').addEventListener('click', () => {
+  if ((findingPage + 1) * FINDINGS_PER_PAGE < viewFindings.length) { findingPage++; renderFindingsPage(); }
+});
 
 const showReport = (result, historical = false) => {
   report = result;
@@ -56,15 +98,9 @@ const showReport = (result, historical = false) => {
   $('activity').hidden = true;
   $('current-file').textContent = '';
   $('progress-summary').textContent = `${result.stopped ? 'Stopped' : 'Completed'} | ${result.scanned.toLocaleString()} files hashed | ${duration(result.elapsed_ms)} elapsed`;
-  $('findings').replaceChildren();
-  if (!result.findings.length) {
-    const p = document.createElement('p');
-    p.className = 'empty'; p.textContent = result.stopped
-      ? 'No matches in the files checked so far. Inspection was stopped before completion.'
-      : 'No signature matches found. Review any warnings for incomplete coverage.';
-    $('findings').append(p);
-  }
-  for (const finding of result.findings) renderFinding(finding);
+  if (historical) { findingPage = 0; renderedPage = -1; }
+  viewFindings = result.findings;
+  renderFindingsPage();
   $('warning-section').hidden = !result.warnings.length;
   $('warnings').textContent = result.warnings.join('\n');
   $('export').disabled = false;
@@ -175,6 +211,10 @@ $('scan').addEventListener('click', async () => {
   if (!target) { $('status').textContent = 'Select a file or folder to scan.'; return; }
   if (database === '') { $('status').textContent = 'Select your custom database folder or turn off the custom database option.'; return; }
   report = undefined;
+  viewFindings = [];
+  findingPage = 0;
+  renderedPage = -1;
+  renderedCount = 0;
   $('report-context').hidden = true;
   const scanId = `${Date.now()}-${++nextScanId}`;
   activeScanId = scanId;
@@ -188,6 +228,9 @@ $('scan').addEventListener('click', async () => {
   $('current-file').textContent = '';
   for (const id of ['scanned', 'matches', 'signatures', 'skipped']) $(id).textContent = '—';
   $('findings').replaceChildren();
+  $('findings-page').textContent = 'Page 1 of 1 | 0 matches';
+  $('findings-prev').disabled = true;
+  $('findings-next').disabled = true;
   $('warning-section').hidden = true;
   for (const id of ['scan', 'target', 'database', 'choose-target', 'choose-file', 'choose-database', 'custom-database']) $(id).disabled = true;
   $('status').textContent = 'Inspection in progress. Large folders may take several minutes…';
@@ -205,12 +248,15 @@ $('scan').addEventListener('click', async () => {
         ? `${progress.current_file}\n${bytes(progress.file_bytes)} read / ${bytes(progress.file_size)} file size`
         : '';
       $('stop').disabled = stopping || !['loading', 'scanning'].includes(progress.phase);
-      if (progress.finding) renderFinding(progress.finding);
+      if (progress.findings?.length && progress.finding_offset === viewFindings.length) {
+        viewFindings.push(...progress.findings);
+        renderFindingsPage();
+      }
     };
     const result = await invoke('scan_folder', { target, database, scanId, onProgress });
     acceptingProgress = false;
     showReport({ target, database: database ?? 'bundled', completedAt: new Date().toISOString(), ...result });
-    await refreshHistory();
+    void refreshHistory();
   } catch (error) {
     $('status').textContent = `Inspection failed: ${error}`;
     $('progress-summary').textContent = 'Inspection failed. Any live findings shown are incomplete.';

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 
-function app(backend = async () => ({ scanned: 1, signatures: 10, skipped: 0, findings: [], warnings: [] }), history = []) {
+function app(backend = async () => ({ scanned: 1, signatures: 10, skipped: 0, findings: [], warnings: [] }), history = [], listHistory = () => ({ entries: history, warnings: [] })) {
   const elements = new Map();
   const element = () => ({
     value: '', checked: false, disabled: false, hidden: false, textContent: '',
@@ -23,7 +23,7 @@ function app(backend = async () => ({ scanned: 1, signatures: 10, skipped: 0, fi
     setTimeout(callback) { callback(); },
     document: { getElementById: get, createElement: element },
     window: { __TAURI__: { core: { Channel: class {}, invoke: async (name, args) => {
-      if (name === 'list_history') return { entries: history, warnings: [] };
+      if (name === 'list_history') return listHistory();
       calls.push({ name, args });
       return backend(name, args);
     } }, webview: { getCurrentWebview: () => ({ onDragDropEvent: async (handler) => { dropHandler = handler; } }) } } },
@@ -101,7 +101,7 @@ test('progress is live, Stop targets this scan, partial findings remain exportab
   assert.equal(get('scan').disabled, true);
   const args = calls[0].args;
   const progress = { phase: 'scanning', scanned: 2, signatures: 10, matches: 1, skipped: 0,
-    current_file: finding.path, file_bytes: 100, file_size: 100, elapsed_ms: 1200, finding };
+    current_file: finding.path, file_bytes: 100, file_size: 100, elapsed_ms: 1200, findings: [finding], finding_offset: 0 };
   args.onProgress.onmessage(progress);
   assert.equal(get('scanned').textContent, '2');
   assert.match(get('current-file').textContent, /test.exe/);
@@ -110,6 +110,9 @@ test('progress is live, Stop targets this scan, partial findings remain exportab
   assert.equal(get('findings').children.length, 1);
   const card = get('findings').children[0];
   assert.match(card.children[0].textContent, /<script>label<\/script>/);
+  assert.equal(card.children[2].children.length, 1, 'details are not built until expanded');
+  card.children[2].open = true;
+  card.children[2].events.toggle();
   const fields = card.children[2].children[1].children;
   assert.ok(fields.some((field) => field.textContent === 'Included database'));
   assert.ok(fields.some((field) => field.textContent === 'Exact SHA-256 match'));
@@ -119,13 +122,14 @@ test('progress is live, Stop targets this scan, partial findings remain exportab
   assert.equal(calls[1].name, 'stop_scan');
   assert.equal(calls[1].args.scanId, args.scanId);
   assert.equal(get('stop').disabled, true);
-  args.onProgress.onmessage({ ...progress, finding: null });
+  args.onProgress.onmessage({ ...progress, findings: [] });
   assert.equal(get('stop').disabled, true);
   finish({ scanned: 2, signatures: 10, skipped: 0, findings: [finding], warnings: [], stopped: true, elapsed_ms: 1400 });
   await running;
   assert.match(get('status').textContent, /results are partial/);
   assert.equal(get('export').disabled, false);
   assert.equal(get('findings').children.length, 1);
+  assert.equal(get('findings').children[0], card, 'completion should reuse the visible finding card');
   assert.equal(get('scan').disabled, false);
   args.onProgress.onmessage({ ...progress, scanned: 99 });
   assert.equal(get('scanned').textContent, '2');
@@ -174,4 +178,41 @@ test('custom database failure reports an error without retrying against bundled 
   assert.equal(get('custom-database').checked, true);
   assert.equal(get('custom-database').disabled, false);
   assert.equal(get('export').disabled, true);
+});
+
+test('large reports paginate 50 cards, create details lazily, and export all findings', async () => {
+  const findings = Array.from({ length: 123 }, (_, i) => ({ signature: `record-${i}`, path: `C:/file-${i}`, sha256: 'a'.repeat(64),
+    size_bytes: 3, signature_source: 'bundled', detection_method: 'Exact SHA-256 match', reason: 'Match' }));
+  const { get, exported } = app(async () => ({ scanned: 123, signatures: 10, skipped: 0, findings, warnings: [], elapsed_ms: 20 }));
+  get('target').value = 'C:/samples';
+  await get('scan').events.click();
+  assert.equal(get('findings').children.length, 50);
+  assert.match(get('findings-page').textContent, /Page 1 of 3/);
+  assert.ok(get('findings').children.every((card) => card.children[2].children.length === 1));
+  get('findings-next').events.click();
+  assert.equal(get('findings').children.length, 50);
+  assert.match(get('findings').children[0].children[0].textContent, /record-50/);
+  get('findings-next').events.click();
+  assert.equal(get('findings').children.length, 23);
+  assert.equal(get('findings-next').disabled, true);
+  get('findings-prev').events.click();
+  assert.equal(get('findings').children.length, 50);
+  get('export').events.click();
+  assert.equal(JSON.parse(await exported().text()).findings.length, 123);
+});
+
+test('slow history refresh does not keep scan controls locked', async () => {
+  let listingCalls = 0;
+  let finishRefresh;
+  const { get } = app(undefined, [], () => {
+    if (++listingCalls === 1) return { entries: [], warnings: [] };
+    return new Promise((resolve) => { finishRefresh = resolve; });
+  });
+  get('target').value = 'C:/samples';
+  await get('scan').events.click();
+  assert.equal(listingCalls, 2);
+  assert.equal(get('scan').disabled, false);
+  assert.equal(get('choose-file').disabled, false);
+  assert.equal(get('export').disabled, false);
+  finishRefresh({ entries: [], warnings: [] });
 });

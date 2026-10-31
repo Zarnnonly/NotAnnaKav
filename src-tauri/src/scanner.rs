@@ -45,7 +45,8 @@ pub struct Progress {
     file_bytes: u64,
     file_size: u64,
     elapsed_ms: u64,
-    finding: Option<Finding>,
+    findings: Vec<Finding>,
+    finding_offset: usize,
 }
 
 struct Updates<F> {
@@ -53,11 +54,16 @@ struct Updates<F> {
     started: Instant,
     last: Instant,
     progress: Progress,
+    next_finding: usize,
 }
 
 impl<F: FnMut(Progress)> Updates<F> {
     fn send(&mut self, report: &Report, force: bool) {
-        if !force && self.last.elapsed() < Duration::from_millis(100) {
+        const BATCH_SIZE: usize = 128;
+        if !force
+            && report.findings.len() - self.next_finding < BATCH_SIZE
+            && self.last.elapsed() < Duration::from_millis(100)
+        {
             return;
         }
         self.progress.scanned = report.scanned;
@@ -65,34 +71,58 @@ impl<F: FnMut(Progress)> Updates<F> {
         self.progress.skipped = report.skipped;
         self.progress.matches = report.findings.len();
         self.progress.elapsed_ms = self.started.elapsed().as_millis() as u64;
-        (self.callback)(self.progress.clone());
-        self.progress.finding = None;
+        loop {
+            let end = (self.next_finding + BATCH_SIZE).min(report.findings.len());
+            let mut message = self.progress.clone();
+            message.finding_offset = self.next_finding;
+            message.findings = report.findings[self.next_finding..end].to_vec();
+            (self.callback)(message);
+            self.next_finding = end;
+            if !force || end == report.findings.len() {
+                break;
+            }
+        }
         self.last = Instant::now();
     }
 }
 
 // The C database writer stores eight native u32 words, little-endian on x86.
-fn decode_signature(bytes: &[u8]) -> Option<String> {
+fn decode_signature(bytes: &[u8]) -> Option<[u8; 32]> {
+    let mut digest = [0u8; 32];
     if bytes.len() == 32 {
-        return Some(
-            bytes
-                .chunks_exact(4)
-                .map(|b| format!("{:08x}", u32::from_le_bytes(b.try_into().unwrap())))
-                .collect(),
-        );
+        for (input, output) in bytes.chunks_exact(4).zip(digest.chunks_exact_mut(4)) {
+            output.copy_from_slice(&u32::from_le_bytes(input.try_into().ok()?).to_be_bytes());
+        }
+        return Some(digest);
     }
     let text = std::str::from_utf8(bytes).ok()?.trim();
-    (text.len() == 64 && text.bytes().all(|c| c.is_ascii_hexdigit()))
-        .then(|| text.to_ascii_lowercase())
+    if text.len() != 64 || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    for (index, byte) in digest.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&text[index * 2..index * 2 + 2], 16).ok()?;
+    }
+    Some(digest)
+}
+
+fn hex_digest(digest: &[u8; 32]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut text = String::with_capacity(64);
+    for byte in digest {
+        text.push(HEX[(byte >> 4) as usize] as char);
+        text.push(HEX[(byte & 15) as usize] as char);
+    }
+    text
 }
 
 fn hash_file(
     path: &Path,
     cancel: &AtomicBool,
     mut update: impl FnMut(u64, u64),
-) -> io::Result<Option<(String, u64)>> {
+) -> io::Result<Option<([u8; 32], u64)>> {
     let mut file = File::open(path)?;
     let size = file.metadata()?.len();
+    update(0, size);
     let mut read = 0;
     let mut hasher = Sha256::new();
     let mut buffer = [0; 65536];
@@ -108,7 +138,7 @@ fn hash_file(
         read += count as u64;
         update(read, size);
     }
-    Ok(Some((format!("{:x}", hasher.finalize()), read)))
+    Ok(Some((hasher.finalize().into(), read)))
 }
 
 pub fn scan(
@@ -122,6 +152,7 @@ pub fn scan(
         callback: on_progress,
         started,
         last: started,
+        next_finding: 0,
         progress: Progress {
             phase: "loading",
             ..Progress::default()
@@ -225,8 +256,7 @@ pub fn scan(
         }
         updates.progress.current_file = entry.path().display().to_string();
         updates.progress.file_bytes = 0;
-        updates.progress.file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-        updates.send(&report, false);
+        updates.progress.file_size = 0;
         match hash_file(entry.path(), cancel, |bytes, size| {
             updates.progress.file_bytes = bytes;
             updates.progress.file_size = size;
@@ -238,15 +268,13 @@ pub fn scan(
                     let finding = Finding {
                         path: entry.path().display().to_string(),
                         signature: signature.clone(),
-                        sha256: hash,
+                        sha256: hex_digest(&hash),
                         size_bytes: size,
                         signature_source: source.clone(),
                         detection_method: "Exact SHA-256 match".into(),
                         reason: "The file digest exactly matches a supplied signature. The signature label is not an independently verified malware verdict.".into(),
                     };
-                    report.findings.push(finding.clone());
-                    updates.progress.finding = Some(finding);
-                    updates.send(&report, true);
+                    report.findings.push(finding);
                 }
             }
             Ok(None) => {
@@ -285,12 +313,15 @@ mod tests {
     fn reads_legacy_words_and_hex() {
         let bytes: Vec<u8> = (0u32..8).flat_map(u32::to_le_bytes).collect();
         let expected: String = (0u32..8).map(|n| format!("{n:08x}")).collect();
-        assert_eq!(decode_signature(&bytes), Some(expected.clone()));
+        let decoded = decode_signature(expected.as_bytes()).unwrap();
+        assert_eq!(decode_signature(&bytes), Some(decoded));
+        assert_eq!(hex_digest(&decoded), expected);
         assert_eq!(
             decode_signature(format!("{}\n", expected.to_uppercase()).as_bytes()),
-            Some(expected)
+            Some(decoded)
         );
         assert_eq!(decode_signature(b"invalid"), None);
+        assert_eq!(decode_signature("+1".repeat(32).as_bytes()), None);
     }
     #[test]
     fn scans_real_files_and_matches_sha256() {
@@ -323,22 +354,66 @@ mod tests {
         assert_eq!(single.findings[0].sha256, report.findings[0].sha256);
         let cancel = AtomicBool::new(false);
         let mut updates = vec![];
+        let streamed = super::scan(
+            target.to_str().unwrap(),
+            Some(db.to_str().unwrap()),
+            &cancel,
+            |p| {
+                updates.push(p);
+            },
+        )
+        .unwrap();
+        assert!(!streamed.stopped);
+        assert_eq!(streamed.findings.len(), 1);
+        assert_eq!(updates.iter().map(|p| p.findings.len()).sum::<usize>(), 1);
+        assert_eq!(updates.last().unwrap().phase, "complete");
+        // Exercise the size threshold without relying on wall-clock timing.
+        let mut messages = Vec::new();
+        let mut batch_report = report.clone();
+        batch_report.findings.clear();
+        let mut batching = Updates {
+            callback: |p: Progress| messages.push(p),
+            started: Instant::now(),
+            last: Instant::now(),
+            next_finding: 0,
+            progress: Progress::default(),
+        };
+        for _ in 0..300 {
+            batch_report.findings.push(report.findings[0].clone());
+            batching.last = Instant::now();
+            batching.send(&batch_report, false);
+        }
+        batching.send(&batch_report, true);
+        assert_eq!(
+            messages
+                .iter()
+                .map(|p| p.findings.len())
+                .collect::<Vec<_>>(),
+            vec![128, 128, 44]
+        );
+        assert_eq!(
+            messages
+                .iter()
+                .map(|p| p.finding_offset)
+                .collect::<Vec<_>>(),
+            vec![0, 128, 256]
+        );
+        for i in 0..260 {
+            fs::write(target.join(format!("copy-{i}.txt")), b"abc").unwrap();
+        }
         let partial = super::scan(
             target.to_str().unwrap(),
             Some(db.to_str().unwrap()),
             &cancel,
             |p| {
-                if p.matches == 1 {
+                if p.matches >= 128 {
                     cancel.store(true, Ordering::Relaxed);
                 }
-                updates.push(p);
             },
         )
         .unwrap();
         assert!(partial.stopped);
-        assert_eq!(partial.findings.len(), 1);
-        assert!(updates.iter().any(|p| p.finding.is_some()));
-        assert_eq!(updates.last().unwrap().phase, "stopped");
+        assert!(partial.findings.len() >= 128 && partial.findings.len() < 261);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -372,7 +447,9 @@ mod tests {
         let mut observed = 0;
         let hash = hash_file(&path, &cancel, |bytes, _| {
             observed = bytes;
-            cancel.store(true, Ordering::Relaxed);
+            if bytes > 0 {
+                cancel.store(true, Ordering::Relaxed);
+            }
         })
         .unwrap();
         assert!(hash.is_none());

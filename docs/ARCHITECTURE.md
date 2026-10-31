@@ -10,7 +10,9 @@ NotAnnaKav Desktop separates presentation from local file inspection. The existi
 4. The scanner canonicalizes the target and any custom database path, loads signatures into a hash map, walks either the single file or target directory, and hashes regular files in 64 KiB chunks.
 5. A Tauri channel streams progress and matches to the interface. The final report includes input paths, completion time, counts, findings, warnings, `stopped`, and `elapsed_ms` in JSON exports.
 
-The database is loaded once per scan. Lookup uses a hash map keyed by the normalized hexadecimal digest. Traversal does not follow symbolic links. Hashing is sequential; the working buffer does not grow with file size. Findings are retained in memory, so report size grows with the number of matches. Routine progress messages are throttled to at most one per 100 ms; phase transitions and matches are sent immediately. Progress includes counts, current path, file bytes read, file size, and elapsed milliseconds. There is no pre-count pass or overall percentage.
+The database is loaded once per scan. Lookup uses a hash map keyed by the 32-byte SHA-256 digest. Hexadecimal strings are created only for matched files. File size is obtained from the opened file handle, without a separate metadata query before hashing. Traversal does not follow symbolic links. Hashing is sequential; the working buffer does not grow with file size. Findings are retained in memory, so report size grows with the number of matches.
+
+Routine progress messages are sent after 100 ms or when 128 new findings accumulate. Messages contain at most 128 findings and their starting offset. Phase transitions force delivery; completion and cancellation flush remaining findings. Progress includes counts, current path, file bytes read, file size, and elapsed milliseconds. There is no pre-count pass or overall percentage. The frontend displays 50 finding cards per page, creates details only when expanded, and reuses the visible live cards on completion. Export still includes the entire report.
 
 The backend permits one active inspection. `stop_scan` accepts its scan ID and sets an atomic cancellation flag. Stale requests cannot cancel another inspection. A worker guard releases the active slot on completion or failure. Cancellation is checked during database loading, traversal, and before each file read. Already-blocked OS calls cannot be interrupted. Interrupted hashes are discarded; completed findings remain available in a report marked `stopped: true`. A channel send failure also requests cancellation. Late progress messages are ignored after frontend completion.
 
@@ -20,7 +22,7 @@ Each finding records the path, bytes hashed, exact SHA-256, record label, databa
 
 ## Data compatibility
 
-Legacy signature files contain eight little-endian 32-bit words. Each word is formatted as eight hexadecimal digits to reconstruct the digest. This is deliberately different from interpreting the stored bytes directly as a SHA-256 byte string.
+Legacy signature files contain eight little-endian 32-bit words. Each word is decoded and converted to its big-endian bytes to reconstruct the SHA-256 digest. This is deliberately different from interpreting the stored bytes directly as a SHA-256 byte string. Hexadecimal database records are decoded into the same 32-byte representation.
 
 Alternatively, a signature file can contain one ASCII hexadecimal digest. Invalid records are reported, and zero usable signatures is an error. Multiple labels for the same digest collapse to one lookup entry.
 
@@ -37,9 +39,11 @@ Custom Rust commands can access paths accepted by the scanner; the window capabi
 
 ## Persistent history
 
-After successful completion or cooperative cancellation, the backend saves the report under `app_local_data_dir()/scan-history`. Each record contains a backend-generated identifier, completion timestamp, requested target, database source, and the full report. Records are serialized to a new temporary file, flushed, then renamed to their final JSON filename. History writes run on the blocking worker. Save failures are returned alongside the report instead of discarding the inspection result.
+After successful completion or cooperative cancellation, the backend saves the report under `app_local_data_dir()/scan-history`. Each record contains a backend-generated identifier, completion timestamp, requested target, database source, and the full report. JSON serialization streams through a 64 KiB buffered writer to a unique temporary file, which is flushed, synced, and renamed to the final JSON filename. This avoids allocating a complete serialized copy of the report. History writes run on the blocking worker. Save failures are returned alongside the report instead of discarding the inspection result.
 
-`list_history` returns summaries for the newest 100 records and warnings for unreadable files. `read_history` returns one complete record; identifiers are restricted to digits and hyphens, and the record ID must match the filename. No caller-supplied filesystem path is accepted by history commands. The frontend loads history on startup and refreshes it after scans. A saved report can be opened and exported while idle; late read responses cannot replace a newly started scan. History files remain until manually removed; this version has no retention or deletion UI. Failed scans that do not return a report are not recorded.
+`list_history` returns summaries for the newest 100 records. A per-record index under `scan-history/index` stores each small summary along with a schema version, report length, and modification timestamp. Listing still enumerates report filenames and checks metadata, but valid index entries avoid reading and deserializing full reports. Missing, stale, or corrupt entries are regenerated from the authoritative report. Existing history is migrated lazily on its first listing; a failed cache write does not discard a saved report. This cache is an optimization, not a tamper-detection mechanism.
+
+`read_history` reads and validates one complete report through a buffered reader; identifiers are restricted to digits and hyphens, and the record ID must match the filename. No caller-supplied filesystem path is accepted by history commands. The frontend loads history on startup and refreshes it in the background after scans, without keeping scan controls disabled. A saved report can be opened and exported while idle; late read responses cannot replace a newly started scan. History files remain until manually removed; this version has no retention or deletion UI. Failed scans that do not return a report are not recorded.
 
 ## Operational limits
 

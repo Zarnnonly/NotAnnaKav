@@ -54,6 +54,8 @@ Click **Stop** to request cancellation. The scanner checks between entries and b
 
 Matches appear during the scan. Open **View finding details** to inspect the path, size, SHA-256, signature record and database source, detection method, and reason. A match is reported only: the file is not deleted, changed, or quarantined.
 
+Findings are displayed 50 at a time; use **Previous** and **Next** to navigate. Details are loaded into the view when expanded. JSON export includes every finding, regardless of the page you are viewing.
+
 ## It remembers now
 
 Completed and stopped scans are saved automatically. Scroll to **Scan history**, then click **Open report** to review a previous result and export its JSON. The saved report's target, date, database, and completion status appear above its findings. Opening history does not run another scan.
@@ -61,6 +63,8 @@ Completed and stopped scans are saved automatically. Scroll to **Scan history**,
 History survives application restarts. Reports live under the operating system's local application data directory, in `io.notannakav.desktop/scan-history` (on Windows, typically `%LOCALAPPDATA%\io.notannakav.desktop\scan-history`). The interface shows the newest 100 records; older files remain on disk. Reports include local paths and signature evidence, not copies of scanned files. There is no automatic deletion policy yet.
 
 A stopped scan is saved as partial. A scan that fails before returning a report is not saved. If saving fails, the scan result stays visible and exportable, with an error explaining that history was not saved. Unreadable history files are reported without hiding valid records.
+
+History uses a small summary index so refreshing the list does not repeatedly load every report's findings. Old reports are indexed automatically the first time they are listed. The list refreshes in the background after a scan, so you can start another inspection immediately after its result appears.
 
 A signature match means the file has the same SHA-256 digest as a record you supplied. How much that tells you depends on where the record came from. A filename in the database is a label, not a verdict handed down by some divine threat intelligence department.
 
