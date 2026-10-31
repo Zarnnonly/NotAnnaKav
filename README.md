@@ -1,5 +1,7 @@
 # NotAnnaKav
 
+**Current release: [v1.0.0](https://github.com/Zarnnonly/NotAnnaKav/releases/tag/v1.0.0)** — Windows x64 installer and portable ZIP. See the [release notes](docs/releases/v1.0.0.md).
+
 ### A window appeared. Unfortunately, the work is still there.
 
 I thought giving this thing a GUI would make it feel finished. A window, a few buttons, some numbers that go up. The usual ritual of convincing yourself that software is becoming software.
