@@ -1,0 +1,39 @@
+name: Linux desktop
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  pure-c:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NotAnnaKav-linux-pure-c
+          path: |
+            build/annakav-cli
+            db/
+            docs/LINUX.md
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:ui
+      - run: npm run build -- --bundles deb,appimage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NotAnnaKav-linux
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage

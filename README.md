@@ -1,6 +1,6 @@
 # NotAnnaKav
 
-**Current release: [v1.1.0](https://github.com/Zarnnonly/NotAnnaKav/releases/tag/v1.1.0)** — Windows x64 installer and portable ZIP. See the [release notes](docs/releases/v1.1.0.md).
+**Current source version: v1.2.0** — Windows desktop plus Linux pure C CLI and Tauri desktop. See the [release notes](docs/releases/v1.2.0.md). Packaged Linux downloads are produced by CI after a successful build.
 
 ### A window appeared. Unfortunately, the work is still there.
 
@@ -23,6 +23,12 @@ No cloud account. No upload step. File contents are processed locally.
 The interface has a dark background because apparently I cannot inspect a file unless the application looks like it knows something I don't.
 
 ## Run it
+
+Linux has two versions: a **pure C CLI** (`make`, then
+`./build/annakav-cli TARGET ./db`) and a **Tauri desktop with C hashing**.
+For both versions backed by the original AnnaKav C SHA-256 code,
+see [Linux build and architecture](docs/LINUX.md). Linux builds use the C
+compression function through FFI; Windows retains the Rust implementation.
 
 You need Node.js with npm, a stable Rust toolchain, and the native development requirements for Tauri. On Windows, that includes Microsoft C++ Build Tools with the desktop C++ workload, the Windows SDK, and WebView2. Other platforms need their corresponding system libraries; see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
@@ -105,7 +111,7 @@ In **Advanced settings**, select that separate folder as your custom database, t
 
 `annakav.c` and `headerUndUtil/` contain the original Linux CLI implementation: directory walking, executable filtering, hashing, signature lookup, permission checks, and checkpoint-related code.
 
-The GUI does **not** execute that CLI. Its Rust backend implements the hashing and lookup workflow separately so it can work without the original hardcoded Linux paths or interactive terminal prompts. It scans all regular files, rather than relying on Unix executable permissions.
+The GUI does **not** execute that CLI. On Linux it links the original C SHA-256 compression function through FFI, with corrected padding in a streaming adapter. Rust manages traversal, reads, signature lookup and reports; Windows also uses Rust for hashing. It scans all regular files, rather than relying on Unix executable permissions, without the original hardcoded paths or terminal prompts.
 
 The original permission-changing routine and checkpoint code are not connected to the desktop app. The GUI does not change system permissions, delete files, or quarantine anything.
 

@@ -1,4 +1,7 @@
+#[cfg(target_os = "linux")]
+use crate::c_hash::Sha256;
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_os = "linux"))]
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
